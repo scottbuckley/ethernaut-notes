@@ -149,30 +149,13 @@ It was a simple call to this deployed contract's `makeCall()` function that gave
 # Level 6: Token
 A quick glance at the code doesn't show anything super out-of-place, but it was pretty simple to find the issue: integer underflow. And of course, you can see that the have specified Solidity version 0.6.0, as newer versions of the compiler take care of this sort of thing, afaik.
 
-The comparison in `require(balances[msg.sender] - _value >= 0);` will always pass, as `_value` is unsigned, as is everything in `balances`. My first thought was just to send 30 tokens to myself, but this wouldn't work; it would subtract 30 tokens from my balance, resulting in me having a huge number of tokens (2^256-10, give or take off-by-one), but then that number would "increase" again by 30, causing it to *overflow* back to the original 20. So, again I just deployed a simple contract to do the request for me, asking to transfer 2^255 tokens, which is just about exactly half the max value of uint256, which seems like enough tokens.
-
+The comparison in `require(balances[msg.sender] - _value >= 0);` will always pass, as `_value` is unsigned, as is everything in `balances`. My first thought was just to send 30 tokens to myself, but this wouldn't work; it would subtract 30 tokens from my balance, resulting in me having a huge number of tokens (2^256-10, give or take off-by-one), but then that number would "increase" again by 30, causing it to *overflow* back to the original 20. The first thing I did was to deploy a contract to send some tokens to myself, but then I realised I didn't even need to do that. I just sent 30 tokens from myself to the address of one of my previously-deployed contracts.
 ```
-// SPDX-License-Identifier: GPL-3.0
-pragma solidity >=0.7.0 <0.9.0;
-
-contract Level6 {
-    address private tokenAddress = [ethernaut's contract address here];
-
-    function transferTokens() external {
-        Token(tokenAddress).transfer(msg.sender, uint(2**255));
-    }
-}
-
-interface Token {
-  function balanceOf ( address _owner ) external view returns ( uint256 balance );
-  function totalSupply (  ) external view returns ( uint256 );
-  function transfer ( address _to, uint256 _value ) external returns ( bool );
-}
-
+contract.transfer("[address of deployed contract]", 30);
 ```
 > A lesson from this level: integer overflow and underflow can break everything. Use a newer version of the Solidity compiler and/or SafeMath. Although there are still ways to cause under/overflow in the latest compiler version too.
 
-Calling `transferTokens()` at the above contract completed the level for me.
+Calling the above completed the level for me.
 
 # Level 7: Delegation
 First glance of this contract shows me `delegatecall`, which is super interesting. Since you can't update contracts once they are deployed, it's common for contracts to simply be shells that point to implementations elsewhere, and `delegatecall` allows for method calls to be forwarded from contract A to contract B, such that contract B's code executes *on contract A's memory*. That last part is important.
@@ -212,3 +195,27 @@ con.methods.boom(contract.address).send({value:web3.utils.toWei("0.0001", "ether
 ```
 This completed the level.
 
+#Level 9: Vault
+
+Here, we can unlock the vault if we know the password. The `password` field is private, but of course everything on a blockchain is public, so of course that's going to be stored somewhere.
+
+My first thought was that the password would be encoded on the transaction that called the constructor and created the contract. But then it occurred to me that it will just be in the contract's state, and that is probably easier to find (although both are public). This still took a bit of looking around - I thought I'd find the data I needed more quickly on etherscan etc, but in the end there is a simple web3js method that gets me what I need.
+```
+await web3.eth.getStorageAt(contract.address, 0)
+-> 0x0000000000000000000000000000000000000000000000000000000000000001
+```
+
+The above gave me the first 32 bytes of storage, and looks suspiciously like a boolean `true`. This makes sense as the first part of storage, as the boolean variable `locked` is declared before `password`. The next entry is:
+
+```
+await web3.eth.getStorageAt(contract.address, 1)
+-> 0x412076657279207374726f6e67207365637265742070617373776f7264203a29
+```
+
+This is some raw binary data. My first thought was that I'd need to decode this somehow, but the type of `password` is just `bytes32`, so I was able to complete the level with the following invocation:
+
+```
+contract.unlock("0x412076657279207374726f6e67207365637265742070617373776f7264203a29");
+```
+
+> A lesson from this level: eveything on-chain is public. This is why zero-knowledge proofs are so important in blockchain work.
