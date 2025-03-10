@@ -195,7 +195,7 @@ con.methods.boom(contract.address).send({value:web3.utils.toWei("0.0001", "ether
 ```
 This completed the level.
 
-#Level 9: Vault
+# Level 9: Vault
 
 Here, we can unlock the vault if we know the password. The `password` field is private, but of course everything on a blockchain is public, so of course that's going to be stored somewhere.
 
@@ -328,3 +328,54 @@ interface Elevator {
   function goTo ( uint256 _floor ) external;
 }
 ```
+
+# Level 12: Privacy
+```
+contract Privacy {
+    bool public locked = true;
+    uint256 public ID = block.timestamp;
+    uint8 private flattening = 10;
+    uint8 private denomination = 255;
+    uint16 private awkwardness = uint16(block.timestamp);
+    bytes32[3] private data;
+
+    constructor(bytes32[3] memory _data) {
+        data = _data;
+    }
+
+    function unlock(bytes16 _key) public {
+        require(_key == bytes16(data[2]));
+        locked = false;
+    }
+
+    /*
+    A bunch of super advanced solidity algorithms...
+
+      ,*'^`*.,*'^`*.,*'^`*.,*'^`*.,*'^`*.,*'^`
+      .,*'^`*.,*'^`*.,*'^`*.,*'^`*.,*'^`*.,*'^`*.,
+      *.,*'^`*.,*'^`*.,*'^`*.,*'^`*.,*'^`*.,*'^`*.,*'^         ,---/V\
+      `*.,*'^`*.,*'^`*.,*'^`*.,*'^`*.,*'^`*.,*'^`*.,*'^`*.    ~|__(o.o)
+      ^`*.,*'^`*.,*'^`*.,*'^`*.,*'^`*.,*'^`*.,*'^`*.,*'^`*.,*'  UU  UU
+    */
+}
+```
+This level seems almost identical to "Vault". There is a private variable in the contract's state, and we need that value to unlock the contract and pass the level. The only difference here is that the data is slightly less obviously placed.
+
+The password is in `data[2]`. Instead of trying to calculate where I expect that piece of data to live in storage, I just printed the first handful of pages (is "page" the right term?) in the contract's storage to inspect them. What I got was:
+```
+await web3.eth.getStorageAt(contract.address, [index]); 
+[0]: 0x0000000000000000000000000000000000000000000000000000000000000001
+[1]: 0x0000000000000000000000000000000000000000000000000000000067cc2b64
+[2]: 0x000000000000000000000000000000000000000000000000000000002b64ff0a
+[3]: 0x43b3ddb218d1f4f2070643816f15c9814c2b105dc9648a459c02ba97627b44c7
+[4]: 0xf98f451e75dd214bbd77286a0d6925ffe6bb76431e1e679f8d3b099dc8c09566
+[5]: 0xa341432f16b3bf30d347d6b6a3261b4a05b3c073ebb4b1eca9b0e5481d04435b
+```
+
+Matching this to contract's declared variables in the same order, we can see that page 0 is 32 whole byes representing the boolean `true`, similar to what we could see in the "Vault" level. Page 1 looks like it's all just `timestamp`. The next three state variables are of type `uint8` and `uint16`, which respectively take up 8 and 16 *bits*, so these seem packed into the same 32 byte page, and we can recognise the values 10 and 255 as `0a` and `ff` at the "start" (last digits) of the page. So, the three values in `data` must be pages 3, 4, and 5. So `data[2]` is page 5.
+
+However, that's not the end of the story, there's a casting that happens before the comparison. `data[2]` is a `bytes32`, bit it is cast into `bytes16` and then compared to `_key`. Without looking it up, I'm going to try both halves of the page and see which one unlocks the contract. Turns out it's the left-hand bits, so the following unlocked the contract and completed the level.
+```
+contract.unlock("0xa341432f16b3bf30d347d6b6a3261b4a");
+```
+
