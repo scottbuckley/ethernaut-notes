@@ -518,12 +518,18 @@ It looks like there are three gates to get through.
 - Gate Two requires a specific amount of gas to be left at the point of checking.
 - Gate Three requires us to pass in a key that appears to be some data derived from the player's address.
 
-My main concern here is how to assign just the right amount of gas such that `gasleft()` gives the right value when it is called. I think I could either try to predict this through examining the amount of gas used by everything leading up to that call, or I could just deploy the contract and step through it to see what happens.
+My main concern here is how to assign just the right amount of gas such that `gasleft()` gives the right value when it is called. I think I could either try to predict this through examining the amount of gas used by everything leading up to that call, or I could just deploy the contract and step through it to see what happens. I started with the latter.
 
-At first I did the latter; I deployed my own copy of the contract and debugged it at the bytecode level, figuring out exactly how much gas had been used by the time `gasleft()` was called, and reverse-engineering the right amount of gas to allocate to pass the second gate. However, it turns out that while this worked on my personal deployment of the contract, it didn't on the live contract. I wasn't able to "verify" (I don't like the use of that word in this context) the bytecode of the deployed contract, so I couldn't do too good a job of debugging it. I would have been content to step manyally through the bytecode of the contract and examine the amount of gas left when the `GAS` opcode executes, but after a deep-dive into debugging (including learning to use Tenderly and Foundry, running my own local fork to debug locally as well as in Remix), I found that tooling is very lacking when it comes to stepping through the bytecode of a cross-contract call.
+To better debug this in Remix, I switched to the VM, deployed a copy of `GatekeeperOne` and the following contract, which allowed me to play around with the amount of gas allocated to the cross-contract call to `enter()`.
+```
+contract EntrantOne {
+    function enter(address gatekeeperAddress, uint256 gasToUse, bytes8 gateKey) external {
+        GatekeeperOne(gatekeeperAddress).enter{gas:gasToUse}(gateKey);
+    }
+}
+```
 
-This is something I still want to tackle at some point, but eventually I thought I'd look up others' solutions to this level to see if I had missed something, and realised that others were just brute-forcing the solution (including the official solution). So, even though I wanted to solve this a bit more elegantly, I decided to brute-force too.
-
+> Note: I ended up taking a different approach, but what I learned from this first approach was still useful.
 
 My first call I allocated 1000000 gas to the transaction (which of course failed). Using Remix to debug this transaction, I was able to trace the execution through to the `GAS` opcode, and see that before executing that instruction there was 999586 gas remaining. I looked up the EVM opcode and can see that this returns the amount of gas remaining, after spending the 2 gas needed to execute that instruction. Indeed, I could see that after this instruction, the top of the stack contained `f40a0`, which is 999584 in decimal, so this makes sense.
 
@@ -537,8 +543,24 @@ The next part asserts inequality between the 32 bit casting and the full 64 bits
 
 The third part seems to require some part of the key to matxh `tx.origin`, which is the player's address. The left-hand side seems to ask for the lower 32 bits of the key, and the right-hand side seems to be asking for the lower 16 bits. So I made the final four characters of the input key the final four characters of my wallet address.
 
-This worked for the copy of the contract that I had deployed, including when I switched over to the real testnet and again deployed a copy of the contract. However, I wasn't getting the same result when trying to infiltrate the real contract. Remix in theory will let you step through bytecode to debug, but it was bugging out, which seems to be a known issue. It makes sense that a small compiler version would change little things like the exact amount of gas used, as well as some compiler settings, and I don't have access to the compiler settings used to compile the Ethernaut level.
+This worked for the copy of the contract that I had deployed, including when I switched over to the real testnet and again deployed a copy of the contract. However, I wasn't getting the same result when trying to infiltrate the real contract. Remix in theory will let you step through bytecode to debug, but it was bugging out, which seems to be a known issue. It makes sense that a specific compiler version or compiler options would change some little things like the exact amount of gas used to get to a certain point, and I don't have access to the compiler settings used to compile the Ethernaut level.
 
-On one hand, this issue is a good representation of a real situation you might be in, outside of a CTF game. On the other hand, the ability to step through the execution of a real transaction at the bytecode level seems like something we really should have, and it's disappointing that I can't seem to find any tool apart from Remix that offers this functionality.
+I would have been content to step manually through the bytecode of the contract and examine the amount of gas left when the `GAS` opcode executes, but after a deep-dive into debugging (including learning to use Tenderly and Foundry, running my own local fork to debug locally as well as in Remix), I found that tooling is very lacking when it comes to stepping through the bytecode of a cross-contract call.
 
-Tenderly will let you debug solidity code, but the debugging accuracy is not fine enough to examine mid-expression computations. I'm sure there are lots of cases where this level of detail is perfect, but I'm frustrated that there's no option to dive deeper into the debug.
+>A lesson from this level. Understanding bytecode isn't hard. Getting a tool to properly step through bytecode for you can be very hard, and it's even harder if you want that bytecode mapped to some source code.
+
+This is something I still want to tackle at some point, but eventually I thought I'd look up others' solutions to this level to see if I had missed some method of properly tracing through the transaction, and realised that others were just brute-forcing the solution (including the official solution). So, even though I wanted to solve this a bit more elegantly, I decided that I should climb out of my bytecode tracing rabbit hole and just do it the easy way.
+
+The following contract got the job done for me. I had no intention of looking up others' solutions when solving Ethernaut myself, but in this instance I was looking for debugging advice, and I came across the official solution, which cleverly uses `.call()` instead of directly accessing the method `enter()`, which stops the `revert()` from bubbling up, and allows the contract to try lots of gas starting points until it succeeds. I implemented the same approach, which worked for me and completed the level. I also decided to generate the appropriate `gateKey` instead of just manually entering the one I had calculated by hand before.
+```
+contract EntrantOne {
+    function enter(address gatekeeperAddress) external {
+        bytes8 key = bytes8(uint64(0x8000000000000000) | uint16(uint160(tx.origin)));
+        bytes memory params = abi.encodeWithSignature(("enter(bytes8)"), key);
+        for (uint256 i = 100; i < 8191; i++) {
+            (bool result,) = address(gatekeeperAddress).call{gas:819100+i}(params);
+            if (result) break;
+        }
+    }
+}
+```
