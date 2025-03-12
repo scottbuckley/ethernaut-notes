@@ -484,3 +484,61 @@ However, that's not the end of the story, there's a casting that happens before 
 contract.unlock("0xa341432f16b3bf30d347d6b6a3261b4a");
 ```
 
+# Level 13: Gatekeeper One
+```
+contract GatekeeperOne {
+    address public entrant;
+
+    modifier gateOne() {
+        require(msg.sender != tx.origin);
+        _;
+    }
+
+    modifier gateTwo() {
+        require(gasleft() % 8191 == 0);
+        _;
+    }
+
+    modifier gateThree(bytes8 _gateKey) {
+        require(uint32(uint64(_gateKey)) == uint16(uint64(_gateKey)), "GatekeeperOne: invalid gateThree part one");
+        require(uint32(uint64(_gateKey)) != uint64(_gateKey), "GatekeeperOne: invalid gateThree part two");
+        require(uint32(uint64(_gateKey)) == uint16(uint160(tx.origin)), "GatekeeperOne: invalid gateThree part three");
+        _;
+    }
+
+    function enter(bytes8 _gateKey) public gateOne gateTwo gateThree(_gateKey) returns (bool) {
+        entrant = tx.origin;
+        return true;
+    }
+}
+```
+
+It looks like there are three gates to get through.
+- Gate One just requires us to pass this request through a deployed contract.
+- Gate Two requires a specific amount of gas to be left at the point of checking.
+- Gate Three requires us to pass in a key that appears to be some data derived from the player's address.
+
+My main concern here is how to assign just the right amount of gas such that `gasleft()` gives the right value when it is called. I think I could either try to predict this through examining the amount of gas used by everything leading up to that call, or I could just deploy the contract and step through it to see what happens.
+
+At first I did the latter; I deployed my own copy of the contract and debugged it at the bytecode level, figuring out exactly how much gas had been used by the time `gasleft()` was called, and reverse-engineering the right amount of gas to allocate to pass the second gate. However, it turns out that while this worked on my personal deployment of the contract, it didn't on the live contract. I wasn't able to "verify" (I don't like the use of that word in this context) the bytecode of the deployed contract, so I couldn't do too good a job of debugging it. I would have been content to step manyally through the bytecode of the contract and examine the amount of gas left when the `GAS` opcode executes, but after a deep-dive into debugging (including learning to use Tenderly and Foundry, running my own local fork to debug locally as well as in Remix), I found that tooling is very lacking when it comes to stepping through the bytecode of a cross-contract call.
+
+This is something I still want to tackle at some point, but eventually I thought I'd look up others' solutions to this level to see if I had missed something, and realised that others were just brute-forcing the solution (including the official solution). So, even though I wanted to solve this a bit more elegantly, I decided to brute-force too.
+
+
+My first call I allocated 1000000 gas to the transaction (which of course failed). Using Remix to debug this transaction, I was able to trace the execution through to the `GAS` opcode, and see that before executing that instruction there was 999586 gas remaining. I looked up the EVM opcode and can see that this returns the amount of gas remaining, after spending the 2 gas needed to execute that instruction. Indeed, I could see that after this instruction, the top of the stack contained `f40a0`, which is 999584 in decimal, so this makes sense.
+
+Given that I started with 1000000 gas, it seems that this algorithm uses 416 gas by the time it has executed the `GAS` operation. So I next ran the same transaction with 8191*100+416 = 819516 gas. Actually I decided that a better opcode to watch was `MOD` when debugging. This time, I stepped to that point and took a look at the stack, which contained `c7f9c` (819100) and `1fff` (8191). After the `MOD` operation, the top of the stack is zero, which is exactly the outcome we wanted.
+
+Next we need to figure out how to pass the third gate. The parameter `_gateKey` is of type `bytes8`, which takes up 64 bits. There are three checks against this key, which seem to compare various sections of bits in the data.
+
+The first part casts both sides to `uint64`, then one side to `uint32` and the other `uint16`. If we assume that these casts take the lower bits in all cases, this condition would probably be asserting that bits 16-31 are zeroes in the input key. Setting the input to all zeroes got us past the first hurdle.
+
+The next part asserts inequality between the 32 bit casting and the full 64 bits. This would mean that the higher 32 bits can't be entirely zeros. Making the first hex character of the input an `f` got us past the second hurdle.
+
+The third part seems to require some part of the key to matxh `tx.origin`, which is the player's address. The left-hand side seems to ask for the lower 32 bits of the key, and the right-hand side seems to be asking for the lower 16 bits. So I made the final four characters of the input key the final four characters of my wallet address.
+
+This worked for the copy of the contract that I had deployed, including when I switched over to the real testnet and again deployed a copy of the contract. However, I wasn't getting the same result when trying to infiltrate the real contract. Remix in theory will let you step through bytecode to debug, but it was bugging out, which seems to be a known issue. It makes sense that a small compiler version would change little things like the exact amount of gas used, as well as some compiler settings, and I don't have access to the compiler settings used to compile the Ethernaut level.
+
+On one hand, this issue is a good representation of a real situation you might be in, outside of a CTF game. On the other hand, the ability to step through the execution of a real transaction at the bytecode level seems like something we really should have, and it's disappointing that I can't seem to find any tool apart from Remix that offers this functionality.
+
+Tenderly will let you debug solidity code, but the debugging accuracy is not fine enough to examine mid-expression computations. I'm sure there are lots of cases where this level of detail is perfect, but I'm frustrated that there's no option to dive deeper into the debug.
