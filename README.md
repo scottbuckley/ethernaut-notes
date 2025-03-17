@@ -612,10 +612,49 @@ contract EntrantTwo {
     }
 }
 
-interface GatekeeperTwo {
-  function enter ( bytes8 _gateKey ) external returns ( bool );
-  function entrant (  ) external view returns ( address );
-}
-
 ```
 
+# Level 15: Naught Coin
+```
+import "openzeppelin-contracts-08/token/ERC20/ERC20.sol";
+
+contract NaughtCoin is ERC20 {
+    // string public constant name = 'NaughtCoin';
+    // string public constant symbol = '0x0';
+    // uint public constant decimals = 18;
+    uint256 public timeLock = block.timestamp + 10 * 365 days;
+    uint256 public INITIAL_SUPPLY;
+    address public player;
+
+    constructor(address _player) ERC20("NaughtCoin", "0x0") {
+        player = _player;
+        INITIAL_SUPPLY = 1000000 * (10 ** uint256(decimals()));
+        // _totalSupply = INITIAL_SUPPLY;
+        // _balances[player] = INITIAL_SUPPLY;
+        _mint(player, INITIAL_SUPPLY);
+        emit Transfer(address(0), player, INITIAL_SUPPLY);
+    }
+
+    function transfer(address _to, uint256 _value) public override lockTokens returns (bool) {
+        super.transfer(_to, _value);
+    }
+
+    // Prevent the initial owner from transferring tokens until the timelock has passed
+    modifier lockTokens() {
+        if (msg.sender == player) {
+            require(block.timestamp > timeLock);
+            _;
+        } else {
+            _;
+        }
+    }
+}
+```
+
+The goal here is to make your own token balance zero. We can see there is a timer locking out the `transfer` method for 10 years, but from a quick look at the ERC20 standard, there is also a `transferFrom` method, where this check is not made. In fact, even if the same check was made in `transferFrom`, this would still be exploitable, as ERC20 allows any token holder to assign an "allowance" to other addresses to manipulate. With this in mind, the timed lockout should either be checking the `from` address rather than `msg.sender`, or also disallow allowances to be updated until the same time has elapsed.
+
+So, for us to complete this level, we must first assign ourselves an allowance of our total balance, and then transfer the tokens to anybody (in this case I sent them to the contract itself) via `transferFrom`. The following two transactions got the job done, via the Ethernaut console.
+```
+contract.approve(player, "1000000000000000000000000")
+contract.transferFrom(player, contract.address, "1000000000000000000000000")
+```
