@@ -728,3 +728,56 @@ interface Preservation {
   function setFirstTime ( uint256 _timeStamp ) external;
 }
 ```
+
+# Level 17: Recovery
+```
+contract Recovery {
+    //generate tokens
+    function generateToken(string memory _name, uint256 _initialSupply) public {
+        new SimpleToken(_name, msg.sender, _initialSupply);
+    }
+}
+
+contract SimpleToken {
+    string public name;
+    mapping(address => uint256) public balances;
+
+    // constructor
+    constructor(string memory _name, address _creator, uint256 _initialSupply) {
+        name = _name;
+        balances[_creator] = _initialSupply;
+    }
+
+    // collect ether in return for tokens
+    receive() external payable {
+        balances[msg.sender] = msg.value * 10;
+    }
+
+    // allow transfers of tokens
+    function transfer(address _to, uint256 _amount) public {
+        require(balances[msg.sender] >= _amount);
+        balances[msg.sender] = balances[msg.sender] - _amount;
+        balances[_to] = _amount;
+    }
+
+    // clean up after ourselves
+    function destroy(address payable _to) public {
+        selfdestruct(_to);
+    }
+}
+```
+
+The idea here is that the contract creator created a new `SimpleToken` contract, sent it some balance, and then lost the address. We need to find the address and take the balance out of it. This looks like it's just going to be a job for block scanners.
+
+Getting a new instance of this level seems to work a little differently. It doesn't advertise the contract address in the console, although the truffleContract `contract` is still available, with an address. I looked up this address on Etherscan, which shows the `Recovery` contracy (althought it doesn't know it by this name), which has two recorded internal transactions.
+
+The first appears to be the contract creation transaction for the `Recovery` contract, and the second must be the contract creation transaction for the `SimpleToken` contract we are looking for. Looking up the address of that contract, we can see it was created and then 0.001 ETH was sent to it, just as the level described.
+
+So now we just need to transfer some balance from that contract. The first thing I did was generate the ABI for the `SimpleToken` contract (there are lots of ways to do this; I used Remix because I already had the tab open). I created a web3js contract as before, and used the `destroy()` method to self-destruct the "lost" contract and send myself the funds. This completed the level.
+```
+var con = makeContract("[address of lost contract]]", [ABI of SimpleToken]);
+con.methods.destroy(player).send()
+```
+
+However, after the level was completed, the text given by the level explained how addresses are created deterministically, and it is possible to send funds to an address that does not yet exist, and later receive those funds by creating a contract at that address. This is interesting, but doesn't seem to have anything to do with the way I solved this level. I guess it was just a reasonable place to share that piece of info? Who knows!
+
