@@ -781,3 +781,50 @@ con.methods.destroy(player).send()
 
 However, after the level was completed, the text given by the level explained how addresses are created deterministically, and it is possible to send funds to an address that does not yet exist, and later receive those funds by creating a contract at that address. This is interesting, but doesn't seem to have anything to do with the way I solved this level. I guess it was just a reasonable place to share that piece of info? Who knows!
 
+# Level 18: MagicNumber
+
+This level requires us to deploy a contract that returns the number 42, in a full-size 32-byte word. The catch is that the code of our contract must be 10 bytes or less.
+
+This is a bit of an insane request if you're compiling Solidity. The Solidity compiler produces bytecode with *a lot* of bookkeeping. For example, the raw bytecode of a contract is always executed from the beginning - the job of selecting which Solidity method to execute involves retrieving the method ID from the calldata, and checking it against a number of precompiled constants, and them jumping to the appropriate starting instruction based on which (if any) is matched.
+
+All of this bookkeeping takes up much more than 10 bytes of bytecode, so we will need to write an extremely simple contract that doesn't check anything, and simply returns 32 bytes encoding the number 42. The following contract will do the same thing and return the same value no matter what method a transaction attempts to call.
+
+```
+PUSH1 0x2a // put 42 on the stack
+PUSH0      // put 0 on the stack (the memory offset)
+MSTORE     // store 42 at offset 0 in memory
+PUSH1 0x20 // put 32 on the stack (the return size)
+PUSH0      // put 0 on the stack (the return offset)
+RETURN     // halt execution and return the first 32 bytes in memory
+```
+
+The above is a human-readable view of the bytecode, called a mnemonic. The raw bytecode of the above (which is a direct translation, not a compilation), is `0x602a60005260206000f3`, which is exactly 10 bytes! You can kind of read this directly if you know that `0x60` represents `PUSH1` - you can see the first 4 bytes map directly to the first two instructions. But there's something funny going on if you look very closely if we unwrap this bytecode back into mnemonics, the first four two opcodes look like:
+```
+PUSH1 0x2a
+PUSH1 0x00
+```
+
+This is a bit different! `PUSH0` is a relatively new opcode, included since the Shanghai Ethereum upgrade. It seems that the bytecode editor I was using to test my bytecode was actually doing a little bit of *compilation*, rather than simply a direct translation. Since Shanghai, we can replace the two bytes of opcode `6000` (which is `PUSH1 0x00`) with `5f` (which is `PUSH0`). This happens twice in our bytecode above, so we can manually shorten this bytecode even further to `0x602a5f5260205ff3`, which is 8 bytes in size, making this even smaller than the level requires!
+
+Now, what we have written above is the *runtime bytecode* - this is the code that we want the contract to execute when a transaction targets it. However, this isn't quite all we need; to create a contract we need to deploy some *contract creation bytecode*, which is essentially the "constructor", which is just a piece of code that executes, and whatever it returns will be stored in the blockchain as the runtime bytecode. So we need to write another little piece of bytecode that will simply return `0x602a5f5260205ff3`, which is the following. Note that we push `0x08` and `0x18`, which are the values 8 and 24, which are the size and offset of the code we have just put in memory - our runtime bytecode of length 8 was placed at the *end* of the first 32 bytes of memory, so we need that 24 byte offset so the return value comes from exactly the right part of memory.
+```
+PUSH8 0x602a5f5260205ff3
+PUSH0
+MSTORE
+PUSH1 0x08
+PUSH1 0x18
+RETURN
+```
+
+Deploying "raw" bytecode is a less common practice, so Remix and other tools don't put that functionality quite as front-and-center. We can still achieve what we need a number of ways though, here is how I did it in web3js, in the Ethernaut console. The hex string you see in the code below is the bytecode representation of our contract creation code.
+
+```
+var con = new web3.eth.Contract([], {data: "0x67602a5f5260205ff35f5260086018f3", from:player});
+var solverAddress = (await con.deploy().send())._address;
+```
+
+After running this, I looked up the returned address on BlockScout, and I could see that a contract had been created, with runtime bytecode of `0x602a5f5260205ff3`, just as we had hoped for. I could then send the address of this contract to the level's `setSolver()` method to complete the level
+
+```
+contract.setSolver(solverAddress);
+```
