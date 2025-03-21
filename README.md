@@ -831,3 +831,5 @@ After running this, I looked up the returned address on BlockScout, and I could 
 ```
 contract.setSolver(solverAddress);
 ```
+
+> A side note: there is also an opcode called `CODECOPY`, which copies the currently-executing bytecode to memory. This seems like a tool that could be used to write a simple general-purpose bytecode prefix, to turn some runtime bytecode into contract creation bytecode. This feels like a more elegant and scalable solution to the above approach.
