@@ -271,7 +271,7 @@ So, if we can get the `Delegation` contract to make a `delegatecall` to the `Del
 
 However, now we are dealing with some more low-level transaction crafting, and it'll take a bit of learning to figure out how to make the right transaction request here.
 
-Firstly, we will need the method ID for the `pwn()` method. This is just the first 4 bytes of the keccak256 hash of the string representing the method signature. For `pwn()`, that is `dd365b8b`, which I got from [here](https://emn178.github.io/online-tools/keccak_256.html). If we wanted to also send some parameters with our transaction, that would get a bit more complex, but luckily `pwn()` takes no parameters.
+Firstly, we will need the method ID for the `pwn()` method. This is just the first 4 bytes of the keccak256 hash of the string representing the method signature. For `pwn()`, that is `dd365b8b`, which I got from [here](https://www.evm-function-selector.click/). If we wanted to also send some parameters with our transaction, that would get a bit more complex, but luckily `pwn()` takes no parameters.
 
 In the end it was a very simple invocation in the Ethernaut console that gave me the result I wanted:
 ```
@@ -833,3 +833,72 @@ contract.setSolver(solverAddress);
 ```
 
 > A side note: there is also an opcode called `CODECOPY`, which copies the currently-executing bytecode to memory. This seems like a tool that could be used to write a simple general-purpose bytecode prefix, to turn some runtime bytecode into contract creation bytecode. This feels like a more elegant and scalable solution to the above approach.
+
+# Level 19: Alien Codex
+```
+pragma solidity ^0.5.0;
+
+import "../helpers/Ownable-05.sol";
+
+contract AlienCodex is Ownable {
+    bool public contact;
+    bytes32[] public codex;
+
+    modifier contacted() {
+        assert(contact);
+        _;
+    }
+
+    function makeContact() public {
+        contact = true;
+    }
+
+    function record(bytes32 _content) public contacted {
+        codex.push(_content);
+    }
+
+    function retract() public contacted {
+        codex.length--;
+    }
+
+    function revise(uint256 i, bytes32 _content) public contacted {
+        codex[i] = _content;
+    }
+}
+```
+
+The first thing I notice looking at this contract is that it specifies the use of an older Solidity compiler version, which suggests that the approach used to attack this contract will have been since patched. Indeed, the vulnerability here takes advantage of array length underflow.
+
+I will briefly explain this exploit here, but I recommend [this article](https://programtheblockchain.com/posts/2018/03/09/understanding-ethereum-smart-contract-storage/) by Steve Marx, who does a great job of explaining in detail how it works.
+
+The first thing we need to think about is how Solidity packs its state variables into storage. This was explored somewhat in the `Delegate` level, but now we need to think about how dynamically-sized variables are allocated.
+
+The first thing we need to know is how Solidity uses its contract storage. Storage being distinct from memory: when we say "memory", we are talking about temporary data created and used during a transaction's execution. When we say "storage", we mean the persistent data that belongs to the deployed contract.
+
+Each contract can store up to 2^256 words, where each word is 32 bytes. We can think of each of these words as being indexed by a number, which we will call the slot number. Slot 0 is the very first word, slot 1 follows, and so on.
+
+The way Solidity allocates storage is mostly very intuitive. Firstly, let's point out that we "inherit" the private variable `_owner` from the `Ownable` contract. This is stored *after* the variables declared directly in `AlienCodex`. In the code for this level, the "first" variable to be stored is `contact`. So `contact` lives in slot 0. After this, we have `codex` in slot 1, but how many slots will `codex` take up, given that its size is likely to change throughout the lifespan of the contract? If there were 150 elements in that array, we can't just put that data in slots 1-151, because we need to place the variable `_owner` somewhere, ideally in slot 2.
+
+Instead Solidity just uses slot 1 for `codex`, where it stores only the *length* of the array, and it stores the *content* of the array consecutively in storage, starting at the slot whose number is the Keccak256 hash of `codex`'s slot number (slot 1).
+
+We can use a web3js helper to calculate this number:
+```
+web3.utils.soliditySha3Raw(1);
+>"0xb10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6" 
+```
+
+The above looks like an address, but it's just the hexadecimal representation of the 256 bit number which we will call `x`, produced by Keccak256 (which is sometimes referred to as SHA3, even though they are not quite the same). So the large number there tells us which slot the contents of `codex` will be stored at, starting with `codex[0]`.
+
+So, what happens if we try to write to `codex[1000]`? We will write to the slot in storage whose number is `x + 1000`. And what if `x + 1000` is larger than 2^256-1? It will wrap back around to zero, and start to overwrite the storage in the more "normally" allocated slots. Therefore, we just need to figure out another number `y`, such that `x + y = 2^256`. That number is, obviously, `2^256 - x`. We can use JavaScript's BigInt type to deal with these numbers, as they are too large for regular JavaScript primitives.
+
+```
+var x = BigInt(web3.utils.soliditySha3Raw(1));
+var limit = BigInt(2) ** BigInt(256);
+var y = limit - x;
+y.toString(16);
+>"4ef1d2ad89edf8c4d91132028e8195cdf30bb4b5053d4f8cd260341d4805f30a"
+```
+
+So the large number for `y` should be an index such that if we attempt to write to `codex[y]`, we will write to slot 0.
+
+
