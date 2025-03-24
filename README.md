@@ -1,18 +1,18 @@
-# Ethernaut docs
-To help me get the most out of the Ethernaut CTF experience, I am writing up some documentation as I go. This is from the perspective of somebody who has some education about how blockchains work, but not much experience actually interfacing with them. Ethernaut was a great learning experience for me.
+# Ethernaut Notes / Walkthrough
+To help me get the most out of the Ethernaut experience, I am writing up some documentation as I go. Figuring all of this out for myself has been lots of fun and a great learning experience - I would recommend anybody else solving Ethernaut for the first time to figure it on their own too, without following a document like this. Writing this document is mostly an exercise to help me solidify my own knowledge.
 
 ## Getting started: the absolute basics
-While this is not intended as a comprehensive walkthrough, here are the things that were not obvious to me before I started this whole thing:
-- The game is played in a test environment, but that environment is a real blockchain (Sepolia), you are interacting from a real wallet address, and using your "real" crypto "money" to execute transactions.
-- This money is all in a test blockchain though, so you're not spending any "real money" to do this. You can't transfer value in or out of the Sepolia chain.
-- You need the browser extension MetaMask to interface with the Sepolia chain via your browser. There are probably other ways to do this, but MetaMask is easy enough to use and no-commitment.
-- In MetaMask, you will need to set up a new wallet address, and put some money in it. You can do this through a "faucet", which just gives you some (Sepolia-only) ETH. I got mine from [here](https://cloud.google.com/application/web3/faucet/ethereum/sepolia).
-- A lot of the learning here, at least in the first handful of levels, is just figuring out how to interface with everything, often via the web3js console on the Ethernaut page, but also "externally" via things like RemixIDE.
+Here are a few basic things about how the whole thing runs, that I didn't know before I started. I learned most of this from Level 0.
+- The game is played in a test environment, but that environment is a real blockchain. The most commonly-used "testnet" at the time of writing was Sepolia, but there are others you can use. You are interacting from a real wallet address, and using your "real" testnet balance to execute transactions.
+- You can't transfer other currencies in/out of a testnet, so you won't need to use any of your "real" money to complete Ethernaut.
+- Ethernaut is designed to be used with the browser extension MetaMask to interface with various blockchains from within your browser. There are other ways to do this, but MetaMask is easy enough to use and no-commitment.
+- In MetaMask, you will need to set up a new wallet address, and put some testnet balance in it. You can do this through a "faucet", which just gives you some (testnet-only) balance. I got all of my testnet balance (Sepolia ETC) from [here](https://cloud.google.com/application/web3/faucet/ethereum/sepolia), but you can easily find other faucets online.
+- A lot of the learning here, at least in the first handful of levels, is just figuring out how to interface with everything, often via the web3js console on the Ethernaut page (which I call the Ethernaut console), but also "externally" via other tools like [RemixIDE](https://remix.ethereum.org/).
 
 ## Level 0: Hello Ethernaut
-This is just a tutorial level, which gets you to set up MetaMask, interact with basic functionality via the console, etc. At the end of the instructions you're asked to call the `.info()` method, which sends you on a trail of method calls which eventually gets you to call the `.authenticate()` method with the embedded password.
+This is just a tutorial level, which gets you to set up MetaMask, interact with basic functionality via the console, etc. At the end of the instructions you're asked to call the `info()` method, which sends you on a trail of method calls which eventually gets you to fetch the password from `password()` and call the `authenticate()` method with the embedded password.
 
-Once you have met the requirements the pass the level, you need to press "Submit Instance" on the ethernaut page to go to the next level.
+I don't recommend this, but if you want to skip most of the steps in this level, you can just run `contract.authenticate(await contract.password())` in the console. Once you have completed the level, you need to press "Submit Instance", which tells Ethernaut to check that you have met the level's requirements, and marks the level as completed.
 
 ## Level 1: Fallback
 ```
@@ -902,3 +902,7 @@ y.toString(16);
 So the large number for `y` should be an index such that if we attempt to write to `codex[y]`, we will write to slot 0.
 
 
+# Appendix: Freq-used URLs
+- [Ethereum Sepolia Faucet](https://cloud.google.com/application/web3/faucet/ethereum/sepolia) - 0.03 SepETH per day.
+- [ABI to Solidity Interface Converter](https://bia.is/tools/abi2solidity/) - to make it easier to transact with Level contracts from my own contracts.
+- [EVM Codes](https://www.evm.codes/) - for exploring the details of EVM opcodes.
