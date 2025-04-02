@@ -96,6 +96,8 @@ contract.send(web3.utils.toWei("0.0005", "ether"));
 After this has gone through, we can see that we are now the owner by querying `await contract.owner()`. We have claimed ownership of the contract, we just need to reduce its balance to 0. This can be achieved with `contract.withdraw()` now that we are the owner, and this completes this level.
 
 # Level 2: Fal1out
+<details><summary>The "Fallback" Contract</summary>
+
 ```
 import "openzeppelin-contracts-06/math/SafeMath.sol";
 
@@ -134,13 +136,14 @@ contract Fallout {
     }
 }
 ```
-This is a funny one. It's an error that seems too obvious to be real. There's just a typo in the name of the constructor of this contract, which means the constructor was never called. It also means we are able to call the "constructor" method any time we want, which will make us the owner.
+</details>
+This is a funny one. It's an error that seems almost too obvious to be real: there's just a typo in the name of the "constructor" of this contract, which means that the method intended as a constructor was not called during contract deployment, and it also means that this method is still available to be called after deployment. So we just need to call that method and it will make us the owner.
+
 ```
 contract.Fal1out();
-await contract.owner();
 ```
 
-I waited a minute for the original transaction to go through. I could see this had happened when the owner changed, although I'm sure there would be another way in this interface to see when a transaction has been confirmed. This was all that was needed to complete this level.
+Calling the above was all that was needed to complete this level.
 
 # Level 3: Coin Flip
 ```
