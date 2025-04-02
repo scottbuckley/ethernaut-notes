@@ -96,7 +96,7 @@ contract.send(web3.utils.toWei("0.0005", "ether"));
 After this has gone through, we can see that we are now the owner by querying `await contract.owner()`. We have claimed ownership of the contract, we just need to reduce its balance to 0. This can be achieved with `contract.withdraw()` now that we are the owner, and this completes this level.
 
 # Level 2: Fal1out
-<details><summary>The "Fallback" Contract</summary>
+<details><summary>The "Fal1out" Contract</summary>
 
 ```
 import "openzeppelin-contracts-06/math/SafeMath.sol";
@@ -146,6 +146,8 @@ contract.Fal1out();
 Calling the above was all that was needed to complete this level.
 
 # Level 3: Coin Flip
+<details><summary>The "Coin Flip" Contract</summary>
+
 ```
 contract CoinFlip {
     uint256 public consecutiveWins;
@@ -177,19 +179,19 @@ contract CoinFlip {
     }
 }
 ```
-Now we are given a contract intended to make you guess the outcome a 50/50 event, and get it right 10 times in a row. You can make a guess with `contract.flip(bool_guess)`, and you can see the number you have guessed correctly so far with `(await contract.consecutiveWins()).toNumber()`.
+</details>
 
-From inspecting the contract, we can see that they are using the hash of the current (unconfirmed) to determine the coin flip's result. At first it looked like a parity check, but I think they are checking if the hash is greater or less than the large value stored in `FACTOR`, via integer division. I am assuming that `FACTOR` is half of the max value of a hash. It doesn't actually matter the intention, what matters is that we can do the same computation to predict what the outcome will be.
 
-Now, this may be possible from the developer console - I had a quick look, and I think it's doable if you're kinda fast enough and you have access to the same `blockhash` function, but I don't want to try to replicate hashing and integer division semantics in JavaScript. The CTF level suggests we start moving outside of this environment, and it makes sense to make an attack contract here.
+For this level, we are given a contract intended to make you guess the outcome a 50/50 event, and get it right 10 times in a row. You can make a guess with `contract.flip()`, and you can see the number of times you have guessed correctly so far with `(await contract.consecutiveWins()).toNumber()`.
 
-I won't give a setup guide for Remix, but I opened it for the first time and had it running in 5 minutes. I just had to set the environment to `Injected Provider - MetaMask` for it to connect to the Sepolia chain and associate with my wallet address on that chain.
+From inspecting the contract, we can see that they are using the hash of the current block to determine the coin flip's result. At first it looked like a parity check, but I think they are checking if the hash is greater or less than the large value stored in `FACTOR`, via integer division. I am assuming that `FACTOR` is half of the max value of `uint256`. It doesn't actually matter the intention, what matters is that we can do the same computation to predict what the outcome will be.
+
+Now, this may be possible from the developer console - I had a quick look, and I think it's doable if you're kinda fast enough and you have access to the same `blockhash` function, but I don't want to try to replicate hashing and integer division semantics in JavaScript. The Ethereum level suggests we start moving outside of this environment, and it makes sense to make an attack contract here.
+
+I won't give a setup guide for [Remix](https://remix.ethereum.org/), but I opened it for the first time and had it running in 5 minutes. I just had to set the environment to `Injected Provider - MetaMask` for it to connect to the appropriate test chain and associate with my wallet address on that chain.
 
 I wrote up the following contract:
 ```
-// SPDX-License-Identifier: GPL-3.0
-pragma solidity >=0.7.0 <0.9.0;
-
 contract CrystalBall {
     uint256 FACTOR = 57896044618658097711785492504343953926634992332820282019728792003956564819968;
 
@@ -199,7 +201,6 @@ contract CrystalBall {
         bool side = coinFlip == 1 ? true : false;
         CoinFlip(coinFlipAddress).flip(side);
     }
-
 }
 
 interface CoinFlip {
@@ -208,20 +209,21 @@ interface CoinFlip {
 }
 ```
 
-This just reproduces the logic to predict the guess, and calls the CTF contract to make the 'correct' guess. I don't bother to check that we are on a new block since the last guess, as calling too frequently will just cause a `revert`, which will cost me nothing except some gas fees.
+This just reproduces the coin flip logic and calls the level contract to make the 'correct' guess. There is protection in the level contract to prevent multiple guesses in the same block, so we will need to take at least 10 blocks to make 10 guesses. In my attack contract I don't bother to check that we are on a new block since the last guess, as attemping to guess too frequently will just cause a `revert`, which will cost me nothing except some gas fees.
 
-The tricky part for a newcomer was figuring out how to call an external contract from within this contract, by address. It sounds like there are a few ways of doing this, but the `interface` method seems the safest and simplest. I manually wrote the interface myself the first time, but this didn't seem ideal, so instead I extracted the JSON ABI from the Ethernaut console with `JSON.stringify(contract.abi)`, which gave me the following:
+The only tricky part for a total Solidity newcomer was figuring out how to call an external contract from within this contract, by address. It sounds like there are a few ways of doing this, but the `interface` method seems the safest and simplest. I manually wrote the interface myself the first time, but this didn't seem ideal, so instead I found it convenient to extract the level contract's JSON ABI from the Ethernaut console with `JSON.stringify(contract.abi)`, which gave me the following:
 ```
 [{"type":"constructor","inputs":[],"stateMutability":"nonpayable"},{"type":"function","name":"consecutiveWins","inputs":[],"outputs":[{"name":"","type":"uint256","internalType":"uint256"}],"stateMutability":"view","constant":true,"signature":"0xe6f334d7"},{"type":"function","name":"flip","inputs":[{"name":"_guess","type":"bool","internalType":"bool"}],"outputs":[{"name":"","type":"bool","internalType":"bool"}],"stateMutability":"nonpayable","signature":"0x1d263f67"}]
 ```
 
-This is JSON though, and while there seems to be solidity libraries to import things like this, that seems complex. I'm not sure if there is a simpler method to get a solidity interface from the web3js contract, but I just pasted the above into an ABI/solidity translator [here](https://bia.is/tools/abi2solidity/), which spat out the interface you can see in the code above. All I had to do was change the interface name from `GeneratedInterface` to `CoinFlip`, which wasn't even strictly necessary.
+This is JSON though, and while there seems to be solidity libraries to import things like this, that seems complex. I'm not sure if there is a simpler method to get a solidity interface from the web3js contract, but I just pasted the above JSON into an ABI/solidity translator [here](https://bia.is/tools/abi2solidity/), which spat out the interface you can see in the code above. All I had to do was change the interface name from `GeneratedInterface` to `CoinFlip`, which wasn't even strictly necessary.
 
-Now I can compile and deploy this contract. There is a "Deploy" tab on the left bar in Remix. Make sure to select `CoinFlipper` instead of the `CoinFlip` interface when deploying. Once this is done, you should see an entry under "Deployed Contracts" with a big button called "makeGuess". Pressing this calls the associated method on our contract on-chain, which makes a (correct) coin flip guess on the CTF contract. After the block is confirmed, you can see this working back on the Ethernaut console with `(await contract.consecutiveWins()).toNumber()`.
+Now I can compile and deploy this contract. There is a "Deploy" tab on the left bar in Remix. Make sure to select `CrystalBall` instead of the `CoinFlip` interface when deploying. Once this is done, you should see an entry under "Deployed Contracts" with a big button called "makeGuess". Pressing this calls the associated method on our contract on-chain, which makes a (correct) coin flip guess on the level contract. After the block is confirmed, you can see this working back on the Ethernaut console with `(await contract.consecutiveWins()).toNumber()`.
 
 > A lesson from this level: "random" is very difficult on most blockchains.
 
-However, while pressing the button in Remix worked for me, I also wanted to know how to do this from the Ethernaut console. It turns out this is a bit tricky if you use web3js `Contract`s, but I'll show you the first way I got this working. First, I had to get the ABI and deployed address of my new `CoinFlipper` contract from Remix, which I used in the following on the Ethernaut console:
+### A note on calling other contracts from the console
+While pressing the button in Remix worked for me, I also wanted to know how to call methods on my contract from the Ethernaut console. It turns out this is a bit tricky if you use web3js `Contract`s, but I'll show you the first way I got this working. First, I had to get the ABI and deployed address of my new `CrystalBall` contract from Remix, which I used in the following on the Ethernaut console:
 ```
 var flipperABI = [paste ABI here];
 var flipperAddress = "[paste address here]";
@@ -234,7 +236,7 @@ await flipper.methods.makeGuess.call().send();
 ```
 This is not quite as nice as the TruffleContract interface we have from Ethernaut's provided `contract`, but it's good enough for now.
 
-We just need to make 10 correct guesses, either from the Remix interface or from the Ethernaut console, and then we have completed the level. Depending on how fast the network is mining new blocks, this might take a while though.
+We just need to make 10 correct guesses, either from the Remix interface or from the Ethernaut console, and then we have completed the level. Depending on how fast the network is mining new blocks, this might take a few minutes though.
 
 # Level 4: Telephone
 Looking at the code, this is very similar to the previous level, except that all we have to do is make a call via a deployed contract, without needing to calculate any parameters. I quickly built the following contract, using a similar method as in Level 4:
