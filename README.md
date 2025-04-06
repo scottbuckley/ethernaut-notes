@@ -317,15 +317,15 @@ contract.transfer(contract.address, 30);
 Calling the above completed the level for me.
 
 # Level 6: Delegation
-First glance of this contract shows me `delegatecall`, which is super interesting. Since you can't update contracts once they are deployed, it's common for contracts to simply be shells that point to implementations elsewhere, and `delegatecall` allows for method calls to be forwarded from contract A to contract B, such that contract B's code executes *on contract A's memory*. That last part is important.
+First glance of this contract shows me `delegatecall()`, which is super interesting. Since you can't update contracts once they are deployed, it's common for contracts to simply be shells that point to implementations elsewhere, and `delegatecall()` allows for method calls to be forwarded from contract A to contract B, such that contract B's code executes *on contract A's storage*. That last part is important.
 
-So, if we can get the `Delegation` contract to make a `delegatecall` to the `Delegate` contract's `pwn` function, then it will set `owner` to us, but that `owner` will be pointing back to the memory of `Delegation`, et voila, we will be the new owners.
+So, if we can get the level contract (`Delegation`) to make a `delegatecall()` to the `Delegate` contract's `pwn()` method, then it will set `owner` to us, but that `owner` will be pointing back to the memory of the level contract, et voila, we will be the new owners.
 
-> A lesson from this level: `delegatecall` can be dangerous. Use it carefully.
+> A lesson from this level: `delegatecall()` can be dangerous. Use it very carefully.
 
 However, now we are dealing with some more low-level transaction crafting, and it'll take a bit of learning to figure out how to make the right transaction request here.
 
-Firstly, we will need the method ID for the `pwn()` method. This is just the first 4 bytes of the keccak256 hash of the string representing the method signature. For `pwn()`, that is `dd365b8b`, which I got from [here](https://www.evm-function-selector.click/). If we wanted to also send some parameters with our transaction, that would get a bit more complex, but luckily `pwn()` takes no parameters.
+We can see the fallback method of `Delegation` will pass on all message data to `Delegate`. `msg.data` contains an encoding of the method ID being called and its arguments. The method ID is an encoding that tells the contract which method to execute, and is just the first 4 bytes of the keccak256 hash of the string representing the method signature. For `pwn()`, that is `dd365b8b`, which I got from [here](https://www.evm-function-selector.click/). If we wanted to also send some parameters with our transaction, we could use `abi.encodePacked()` or similar, but we don't need any parameters for this call.
 
 In the end it was a very simple invocation in the Ethernaut console that gave me the result I wanted:
 ```
