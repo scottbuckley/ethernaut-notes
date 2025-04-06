@@ -261,7 +261,7 @@ contract Telephone {
 }
 </details>
 
-It seems that everything we need to solve this level we have already learned in the previous level. The only requirement to pass this level is to call the level contract's `changeOwner()` method from our own deployed contract. I deployed the following contract, and calling `makeCall()` completed the level for me.
+It seems that everything we need to solve this level we have already learned in the previous level. The only requirement to complete this level is to call the level contract's `changeOwner()` method from our own deployed contract. I deployed the following contract, and calling `makeCall()` completed the level for me.
 ```
 contract PhoneCall {
     address private telephoneAddress = [ethernaut's contract address here];
@@ -306,7 +306,7 @@ contract Token {
 }
 </details>
 
-A quick glance at the code doesn't show anything super out-of-place, but the issue here is pretty simple: integer underflow. And of course, you can see that they have specified Solidity version 0.6.0, as newer versions of the compiler perform more careful checks on integer arithmetic.
+To complete this level, we need to increase the number of tokens we have, past our starting quota of 20 tokens. A quick glance at the code doesn't show anything super out-of-place, but the issue here is pretty simple: integer underflow. And of course, you can see that they have specified Solidity version 0.6.0, as newer versions of the compiler perform more careful checks on integer arithmetic.
 
 The comparison in `require(balances[msg.sender] - _value >= 0);` will always pass, as `_value` is unsigned, as is everything in `balances`. My first thought was just to send 30 tokens to myself, but this wouldn't work; it would subtract 30 tokens from my balance, resulting in me having a huge number of tokens (2^256-10, give or take off-by-one), but then that number would "increase" again by 30, causing it to *overflow* back to the original 20. The first thing I did was to deploy a contract to send some tokens to myself, but then I realised I didn't even need to do that; I can just send tokens to anybody except myself, so I sent them to the level contract itself.
 ```
@@ -317,9 +317,43 @@ contract.transfer(contract.address, 30);
 Calling the above completed the level for me.
 
 # Level 6: Delegation
-First glance of this contract shows me `delegatecall()`, which is super interesting. Since you can't update contracts once they are deployed, it's common for contracts to simply be shells that point to implementations elsewhere, and `delegatecall()` allows for method calls to be forwarded from contract A to contract B, such that contract B's code executes *on contract A's storage*. That last part is important.
+<details><summary>The "Delegation" Contract</summary>
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
 
-So, if we can get the level contract (`Delegation`) to make a `delegatecall()` to the `Delegate` contract's `pwn()` method, then it will set `owner` to us, but that `owner` will be pointing back to the memory of the level contract, et voila, we will be the new owners.
+contract Delegate {
+    address public owner;
+
+    constructor(address _owner) {
+        owner = _owner;
+    }
+
+    function pwn() public {
+        owner = msg.sender;
+    }
+}
+
+contract Delegation {
+    address public owner;
+    Delegate delegate;
+
+    constructor(address _delegateAddress) {
+        delegate = Delegate(_delegateAddress);
+        owner = msg.sender;
+    }
+
+    fallback() external {
+        (bool result,) = address(delegate).delegatecall(msg.data);
+        if (result) {
+            this;
+        }
+    }
+}
+</details>
+
+The first thing I noticed when looking at this code was `delegatecall()`, which is super interesting. Since you can't update contracts once they are deployed, it's common for contracts to simply be shells that point to implementations elsewhere, and `delegatecall()` allows for method calls to be forwarded from contract A to contract B, such that contract B's code executes *on contract A's storage*. That last part is important.
+
+To complete this level we have to take ownership of the level contract (`Delegation`). So, if we can get the level contract  to make a `delegatecall()` to the `Delegate` contract's `pwn()` method, then it will set `owner` to us, but that `owner` will be pointing back to the memory of the level contract, et voila, we will be the new owners.
 
 > A lesson from this level: `delegatecall()` can be dangerous. Use it very carefully.
 
@@ -334,14 +368,27 @@ sendTransaction({to:contract.address, from:player, data:"dd365b8b"});
 It seems that web3js etc took care of all the other details, such as gas price, gas allocation, etc. I'm glad I didn't need to dive into all of those details myself.
 
 # Level 7: Force
-This is another strange one. We are faced with a contract that has no payable methods and no fallbacks defined. It turns out some contracts really don't want to receive any payments, but there is a tricky way to force a payment on somebody: a contract can self-destruct, and when this happens it sends its entire balance to an address. That address is forced to receive the balance.
+<details><summary>The "Force" Contract</summary>
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
 
-It's a bit weird that `selfdestruct()` exists - it looks like there's some interesting history behind it. Nevertheless, it does exist and it's a way to force payment to an address that doesn't have payment fallbacks. I built the following contract that can receive payment and immediately self-destruct, sending its balance to a supplied address.
+contract Force { /*
+                   MEOW ?
+         /\_/\   /
+    ____/ o o \
+    /~____  =ø= /
+    (______)__m_m)
+                   */ }
+</details>
+
+This is another strange one. We are faced with a contract that has no payable methods and no fallbacks defined, but we have to increase the level contract's balance to pass the level. It turns out some contracts really don't want to receive any payments, but there is a tricky way to force a payment on somebody: another contract can self-destruct, and when this happens it sends its entire balance to an address. That address is forced to receive the balance, even if it tries to revert or has no method to receive balance.
+
+It's a bit weird that `selfdestruct()` exists - it looks like there's some interesting history behind it, and it is deprecated in newer EVM versions. Nevertheless, it does exist and it's a way to force payment to an address that doesn't have payment fallbacks. I built the following contract that can receive payment and immediately self-destruct, sending its balance to a supplied address.
 ```
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity >=0.7.0 <0.9.0;
 
-contract Level7 {
+contract Voltorb {
     function boom(address payable beneficiary) payable external {
       selfdestruct(payable(address(beneficiary)));
     }
