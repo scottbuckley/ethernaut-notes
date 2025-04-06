@@ -402,16 +402,36 @@ con.methods.boom(contract.address).send({value:web3.utils.toWei("0.0001", "ether
 This completed the level.
 
 # Level 8: Vault
+<details><summary>The "Vault" Contract</summary>
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
 
-Here, we can unlock the vault if we know the password. The `password` field is private, but of course everything on a blockchain is public, so of course that's going to be stored somewhere.
+contract Vault {
+    bool public locked;
+    bytes32 private password;
 
-My first thought was that the password would be encoded on the transaction that called the constructor and created the contract. But then it occurred to me that it will just be in the contract's state, and that is probably easier to find (although both are public). This still took a bit of looking around - I thought I'd find the data I needed more quickly on etherscan etc, but in the end there is a simple web3js method that gets me what I need.
+    constructor(bytes32 _password) {
+        locked = true;
+        password = _password;
+    }
+
+    function unlock(bytes32 _password) public {
+        if (password == _password) {
+            locked = false;
+        }
+    }
+}
+</details>
+
+To pass this level, we need to unlock it, which requires knowing the value of the state variable `password`. This variable is private, but of course everything on a blockchain is public, so of course that's going to be stored somewhere.
+
+My first thought was that the password would be encoded on the transaction that called the constructor and created the contract. But then it occurred to me that it will just be in the contract's storage, and that is probably easier to find (although both are public). This still took a bit of looking around - I thought I'd find the data I needed more quickly on EtherScan etc, but in the end there is a simple web3js method that gets me what I need.
 ```
 await web3.eth.getStorageAt(contract.address, 0)
 -> 0x0000000000000000000000000000000000000000000000000000000000000001
 ```
 
-The above gave me the first 32 bytes of storage, and looks suspiciously like a boolean `true`. This makes sense as the first part of storage, as the boolean variable `locked` is declared before `password`. The next entry is:
+The above gave me the first 32 bytes of storage, which looks suspiciously like a boolean `true`. This makes sense as the first part of storage, as the boolean variable `locked` is declared before `password`. We could think about how state variables are packed together when they are placed in storage, but for now we will just inspect storage manually. The next entry is:
 
 ```
 await web3.eth.getStorageAt(contract.address, 1)
@@ -425,6 +445,8 @@ contract.unlock("0x412076657279207374726f6e67207365637265742070617373776f7264203
 ```
 
 > A lesson from this level: eveything on-chain is public. This is why zero-knowledge proofs are so important in blockchain work.
+
+Out of interest, I converted the above hex string into an ASCII string, and the encoded password is "A very strong secret password :)", which is conveniently 32 characters long.
 
 # Level 9: King
 The goal here is to prevent the Ethernaut level from becoming 'king' again, after you submit the level. It doesn't say that you have to be king yourself. This took me a minute to see, but I think the trick is to make the king an address that isn't payable. Then, when the Ethernaut level tries to reclaim kinghood, `receive()` will fail when it tries to send the balance back, and revert, making the unpayable king unusurpable.
