@@ -281,11 +281,36 @@ interface Telephone {
 
 
 # Level 5: Token
-A quick glance at the code doesn't show anything super out-of-place, but it was pretty simple to find the issue: integer underflow. And of course, you can see that the have specified Solidity version 0.6.0, as newer versions of the compiler take care of this sort of thing, afaik.
+<details><summary>The "Token" Contract</summary>
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.6.0;
 
-The comparison in `require(balances[msg.sender] - _value >= 0);` will always pass, as `_value` is unsigned, as is everything in `balances`. My first thought was just to send 30 tokens to myself, but this wouldn't work; it would subtract 30 tokens from my balance, resulting in me having a huge number of tokens (2^256-10, give or take off-by-one), but then that number would "increase" again by 30, causing it to *overflow* back to the original 20. The first thing I did was to deploy a contract to send some tokens to myself, but then I realised I didn't even need to do that. I just sent 30 tokens from myself to the address of one of my previously-deployed contracts.
+contract Token {
+    mapping(address => uint256) balances;
+    uint256 public totalSupply;
+
+    constructor(uint256 _initialSupply) public {
+        balances[msg.sender] = totalSupply = _initialSupply;
+    }
+
+    function transfer(address _to, uint256 _value) public returns (bool) {
+        require(balances[msg.sender] - _value >= 0);
+        balances[msg.sender] -= _value;
+        balances[_to] += _value;
+        return true;
+    }
+
+    function balanceOf(address _owner) public view returns (uint256 balance) {
+        return balances[_owner];
+    }
+}
+</details>
+
+A quick glance at the code doesn't show anything super out-of-place, but the issue here is pretty simple: integer underflow. And of course, you can see that they have specified Solidity version 0.6.0, as newer versions of the compiler perform more careful checks on integer arithmetic.
+
+The comparison in `require(balances[msg.sender] - _value >= 0);` will always pass, as `_value` is unsigned, as is everything in `balances`. My first thought was just to send 30 tokens to myself, but this wouldn't work; it would subtract 30 tokens from my balance, resulting in me having a huge number of tokens (2^256-10, give or take off-by-one), but then that number would "increase" again by 30, causing it to *overflow* back to the original 20. The first thing I did was to deploy a contract to send some tokens to myself, but then I realised I didn't even need to do that; I can just send tokens to anybody except myself, so I sent them to the level contract itself.
 ```
-contract.transfer("[address of deployed contract]", 30);
+contract.transfer(contract.address, 30); 
 ```
 > A lesson from this level: integer overflow and underflow can break everything. Use a newer version of the Solidity compiler and/or SafeMath. Although there are still ways to cause under/overflow in the latest compiler version too.
 
