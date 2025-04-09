@@ -449,15 +449,43 @@ contract.unlock("0x412076657279207374726f6e67207365637265742070617373776f7264203
 Out of interest, I converted the above hex string into an ASCII string, and the encoded password is "A very strong secret password :)", which is conveniently 32 characters long.
 
 # Level 9: King
-The goal here is to prevent the Ethernaut level from becoming 'king' again, after you submit the level. It doesn't say that you have to be king yourself. This took me a minute to see, but I think the trick is to make the king an address that isn't payable. Then, when the Ethernaut level tries to reclaim kinghood, `receive()` will fail when it tries to send the balance back, and revert, making the unpayable king unusurpable.
+<details><summary>The "King" Contract</summary>
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
 
-> A lesson from this level: don't assume all addresses are payable.
+contract King {
+    address king;
+    uint256 public prize;
+    address public owner;
 
-I don't think I can make my own wallet unpayable, but I didn't look into it, as I can just make an unpayable contract, then make that contract king, and then we are golden. You can't give a contract any balance during contract creation though, so I'll need to make the contract somewhat payable, I'll just have to make it so that the Ethernaut level fails when it tries to pay it back.
+    constructor() payable {
+        owner = msg.sender;
+        king = msg.sender;
+        prize = msg.value;
+    }
 
-I implemented a solution this way, but I came across something while I was working on it that I want to use to break the level instead. It's a subtle difference: instead of making the king unpayable, I will make it so the king can't be paid via the `transfer()` method. This method only allocates 2300 gas for the fallback method to use, so if we exceed this amount, it will fail and revert. I think the way the Ethernaut devs built the original `King` contract was to intentionally drop us into the same trap, which was clever.
+    receive() external payable {
+        require(msg.value >= prize || msg.sender == owner);
+        payable(king).transfer(msg.value);
+        king = msg.sender;
+        prize = msg.value;
+    }
 
-At this point I also got sick of defining contracts in the Ethernaut console, so i built a couple of helpers:
+    function _king() public view returns (address) {
+        return king;
+    }
+}
+</details>
+
+The goal here is to prevent the Ethernaut level from being able to become 'king' again, after you submit the level. It doesn't say that you have to be king yourself. This took me a minute to see, but the trick is to make the king an address that isn't payable. Then, when the Ethernaut level tries to reclaim kinghood, `transfer()` will fail when it tries to send the balance back, and revert, making the unpayable king unusurpable.
+
+> A lesson from this level: don't assume all addresses are payable, or that all payments will succeed.
+
+I can't make my own wallet unpayable, but I can just make an unpayable contract, then make that contract king, and then we are golden. You can't give a contract any balance during contract creation though, so I'll need to make the contract somewhat payable, so that it can send balance to become 'king'. I'll just have to make it so that the Ethernaut level fails when it tries to pay it back, for example by setting a flag that refuses all future payments.
+
+I implemented a solution this way, but I came across something while I was working on it that I want to use to break the level instead. It's a subtle difference: instead of making the king unpayable, I will make it so the king can't be paid via the `transfer()` method. The `transfer()` method only allocates 2300 gas for the recipient's fallback method to use, so if we exceed this amount, it will fail and revert. I think the way the Ethernaut devs built the original `King` contract was to intentionally drop us into the same trap, which was clever.
+
+At this point I also got sick of defining contracts in the Ethernaut console, so i built a couple of simple helpers:
 ```
 var makeContract = (addr, abi) => { var con = new web3.eth.Contract(abi, addr); con.options.from=player; return con; };
 
@@ -481,7 +509,7 @@ contract ForeverKing {
 ```
 I deployed the above contract and invoked it with the following, which completed the level.
 ```
-await con.methods.usurp(contract.address).send({value:wei("0.0015")})
+con.methods.usurp(contract.address).send({value:wei("0.0015")})
 ```
 
 # Level 10: Re-entrancy
