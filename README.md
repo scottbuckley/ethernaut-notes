@@ -403,6 +403,7 @@ This completed the level.
 
 # Level 8: Vault
 <details><summary>The "Vault" Contract</summary>
+
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
