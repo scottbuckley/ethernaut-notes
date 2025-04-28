@@ -243,6 +243,8 @@ We just need to make 10 correct guesses, either from the Remix interface or from
 
 # Level 4: Telephone
 <details><summary>The "Telephone" Contract</summary>
+
+```
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
@@ -259,6 +261,8 @@ contract Telephone {
         }
     }
 }
+```
+
 </details>
 
 It seems that everything we need to solve this level we have already learned in the previous level. The only requirement to complete this level is to call the level contract's `changeOwner()` method from our own deployed contract. I deployed the following contract, and calling `makeCall()` completed the level for me.
@@ -282,6 +286,8 @@ interface Telephone {
 
 # Level 5: Token
 <details><summary>The "Token" Contract</summary>
+
+```
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.6.0;
 
@@ -304,6 +310,8 @@ contract Token {
         return balances[_owner];
     }
 }
+```
+
 </details>
 
 To complete this level, we need to increase the number of tokens we have, past our starting quota of 20 tokens. A quick glance at the code doesn't show anything super out-of-place, but the issue here is pretty simple: integer underflow. And of course, you can see that they have specified Solidity version 0.6.0, as newer versions of the compiler perform more careful checks on integer arithmetic.
@@ -318,6 +326,8 @@ Calling the above completed the level for me.
 
 # Level 6: Delegation
 <details><summary>The "Delegation" Contract</summary>
+
+```
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
@@ -349,6 +359,8 @@ contract Delegation {
         }
     }
 }
+```
+
 </details>
 
 The first thing I noticed when looking at this code was `delegatecall()`, which is super interesting. Since you can't update contracts once they are deployed, it's common for contracts to simply be shells that point to implementations elsewhere, and `delegatecall()` allows for method calls to be forwarded from contract A to contract B, such that contract B's code executes *on contract A's storage*. That last part is important.
@@ -369,6 +381,8 @@ It seems that web3js etc took care of all the other details, such as gas price, 
 
 # Level 7: Force
 <details><summary>The "Force" Contract</summary>
+
+```
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
@@ -379,6 +393,8 @@ contract Force { /*
     /~____  =ø= /
     (______)__m_m)
                    */ }
+```
+
 </details>
 
 This is another strange one. We are faced with a contract that has no payable methods and no fallbacks defined, but we have to increase the level contract's balance to pass the level. It turns out some contracts really don't want to receive any payments, but there is a tricky way to force a payment on somebody: another contract can self-destruct, and when this happens it sends its entire balance to an address. That address is forced to receive the balance, even if it tries to revert or has no method to receive balance.
@@ -404,6 +420,7 @@ This completed the level.
 # Level 8: Vault
 <details><summary>The "Vault" Contract</summary>
 
+```
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
@@ -422,6 +439,8 @@ contract Vault {
         }
     }
 }
+```
+
 </details>
 
 To pass this level, we need to unlock it, which requires knowing the value of the state variable `password`. This variable is private, but of course everything on a blockchain is public, so of course that's going to be stored somewhere.
